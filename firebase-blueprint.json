@@ -1,0 +1,84 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User account information and statistics.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "bio": { "type": "string" },
+        "streak": { "type": "integer" },
+        "totalMinutes": { "type": "integer" },
+        "followersCount": { "type": "integer" },
+        "followingCount": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "createdAt"]
+    },
+    "Stack": {
+      "title": "Study Session (Stack)",
+      "description": "A completed study session shared to the feed.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userPhotoURL": { "type": "string" },
+        "activity": { "type": "string" },
+        "durationMinutes": { "type": "integer" },
+        "startTime": { "type": "string", "format": "date-time" },
+        "endTime": { "type": "string", "format": "date-time" },
+        "photoURL": { "type": "string" },
+        "note": { "type": "string" },
+        "likesCount": { "type": "integer" },
+        "commentsCount": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userName", "activity", "durationMinutes", "createdAt"]
+    },
+    "Channel": {
+      "title": "Community Channel",
+      "description": "A topic-based community channel for chat.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "icon": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "Message": {
+      "title": "Channel Message",
+      "description": "A message sent within a community channel.",
+      "type": "object",
+      "properties": {
+        "channelId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userPhotoURL": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["channelId", "userId", "content", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profiles."
+    },
+    "stacks/{stackId}": {
+      "schema": "Stack",
+      "description": "Public study sessions."
+    },
+    "channels/{channelId}": {
+      "schema": "Channel",
+      "description": "Community channels."
+    },
+    "channels/{channelId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Messages within a channel."
+    }
+  }
+}

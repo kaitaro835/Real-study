@@ -1,0 +1,8 @@
+{
+  "name": "Stack - Study Together",
+  "description": "リアルタイムで勉強のやる気を共有するSNS。タイマーで計測し、写真と一緒に仲間の頑張りをフィードで確認できます。",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": []
+}
