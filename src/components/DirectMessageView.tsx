@@ -154,8 +154,8 @@ export const DirectMessageView: React.FC<DirectMessageViewProps> = ({ targetUser
         <div ref={scrollRef} className="h-4" />
       </div>
 
-      {/* Input Area - Ensure this is ALWAYS visible and at the bottom */}
-      <div className="flex-none p-4 pb-8 border-t border-dark-border bg-black">
+      {/* Input Area - Compact for mobile usability */}
+      <div className="flex-none p-3 pb-6 border-t border-dark-border bg-black">
         <form onSubmit={handleSendMessage} className="flex gap-2 items-center">
           <div className="flex-1 relative">
             <input
@@ -164,15 +164,15 @@ export const DirectMessageView: React.FC<DirectMessageViewProps> = ({ targetUser
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               placeholder="Type your message..."
-              className="w-full bg-dark-surface border border-dark-border rounded-2xl px-5 py-4 text-white text-sm focus:outline-none focus:border-brand-cyan transition-all placeholder:text-gray-600 shadow-inner"
+              className="w-full bg-dark-surface border border-dark-border rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-brand-cyan transition-all placeholder:text-gray-600 shadow-inner"
             />
           </div>
           <button
             type="submit"
             disabled={!newMessage.trim()}
-            className="w-14 h-14 bg-brand-cyan text-black rounded-2xl flex items-center justify-center disabled:opacity-30 disabled:grayscale transition-all active:scale-95 shadow-lg"
+            className="w-10 h-10 bg-brand-cyan text-black rounded-xl flex items-center justify-center disabled:opacity-30 disabled:grayscale transition-all active:scale-95 shadow-lg shrink-0"
           >
-            <Send className="w-6 h-6" />
+            <Send className="w-5 h-5" />
           </button>
         </form>
       </div>
