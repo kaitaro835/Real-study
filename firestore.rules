@@ -45,8 +45,7 @@ service cloud.firestore {
                data.createdAt is timestamp;
       }
 
-      allow get: if isSignedIn();
-      allow list: if isSignedIn(); // Allow searching for friends
+      allow read: if isSignedIn();
       allow create: if isOwner(userId) && 
                       isValidUser(incoming()) && 
                       incoming().uid == request.auth.uid &&
@@ -56,16 +55,60 @@ service cloud.firestore {
                       incoming().followingCount == 0 &&
                       incoming().createdAt == request.time;
       
-      allow update: if isOwner(userId) && 
-                      isValidUser(incoming()) &&
-                      incoming().uid == existing().uid &&
-                      incoming().createdAt == existing().createdAt &&
+      allow update: if isSignedIn() && (
+                      // Profile owner updates
+                      (isOwner(userId) && 
+                        isValidUser(incoming()) &&
+                        incoming().uid == existing().uid &&
+                        incoming().createdAt == existing().createdAt &&
+                        (
+                          incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'bio']) ||
+                          incoming().diff(existing()).affectedKeys().hasAny(['streak', 'totalMinutes', 'followingCount'])
+                        )
+                      ) ||
+                      // Anyone can update followersCount (for follow/unfollow)
                       (
-                        // Profile edit
-                        incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'bio']) ||
-                        // Stats update (should ideally be server-side but for now allowing if logic matches)
-                        incoming().diff(existing()).affectedKeys().hasAny(['streak', 'totalMinutes'])
-                      );
+                        isValidUser(incoming()) &&
+                        incoming().diff(existing()).affectedKeys().hasOnly(['followersCount']) &&
+                        (incoming().followersCount == existing().followersCount + 1 || incoming().followersCount == existing().followersCount - 1)
+                      )
+                    );
+    }
+
+    // FOLLOW RULES
+    match /follows/{followId} {
+      function isValidFollow(data) {
+        return data.followerId == request.auth.uid &&
+               data.followingId is string &&
+               data.createdAt == request.time;
+      }
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidFollow(incoming());
+      // Support setDoc as update if it's the exact same data
+      allow update: if isSignedIn() && isValidFollow(incoming()) && incoming().followerId == existing().followerId;
+      allow delete: if isSignedIn() && existing().followerId == request.auth.uid;
+    }
+
+    match /conversations/{conversationId} {
+      function isParticipant() {
+        return isSignedIn() && (
+          (resource != null && request.auth.uid in resource.data.participants) ||
+          (request.resource != null && request.auth.uid in request.resource.data.participants)
+        );
+      }
+
+      allow read: if isSignedIn() && (resource == null || request.auth.uid in resource.data.participants);
+      allow create: if isSignedIn() && request.auth.uid in request.resource.data.participants && request.resource.data.participants.size() == 2;
+      allow update: if isParticipant();
+
+      match /messages/{messageId} {
+        function canInteractMessages() {
+          return isSignedIn() && exists(/databases/$(database)/documents/conversations/$(conversationId)) &&
+                 request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
+        }
+        allow read: if canInteractMessages();
+        allow create: if canInteractMessages() && request.resource.data.userId == request.auth.uid;
+      }
     }
 
     // STACK RULES

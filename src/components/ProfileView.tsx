@@ -1,38 +1,55 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Edit3, Award, Zap, Clock, Users } from 'lucide-react';
+import { Settings, Edit3, Award, Zap, Clock, Users, ArrowLeft, UserPlus, MessageCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { auth, db } from '../lib/firebase';
-import { doc, getDoc, collection, query, where, orderBy, getDocs, limit, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, orderBy, getDocs, limit, updateDoc, setDoc, deleteDoc, increment, serverTimestamp } from 'firebase/firestore';
 import { UserProfile, Stack, OperationType } from '../types';
 import { handleFirestoreError } from '../lib/utils';
 
-export const ProfileView: React.FC = () => {
+interface ProfileViewProps {
+  targetUserId?: string | null;
+  onBack?: () => void;
+  onStartDM?: (userId: string, userName: string) => void;
+}
+
+export const ProfileView: React.FC<ProfileViewProps> = ({ targetUserId, onBack, onStartDM }) => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [userStacks, setUserStacks] = useState<Stack[]>([]);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState('');
   const [editBio, setEditBio] = useState('');
+  const [isFollowing, setIsFollowing] = useState(false);
 
-  const user = auth.currentUser;
+  const currentUser = auth.currentUser;
+  const effectiveUserId = targetUserId || currentUser?.uid;
+  const isOwnProfile = effectiveUserId === currentUser?.uid;
 
   useEffect(() => {
-    if (!user) return;
+    if (!effectiveUserId) return;
 
     const fetchProfile = async () => {
+      setLoading(true);
       try {
-        const docRef = doc(db, 'users', user.uid);
+        const docRef = doc(db, 'users', effectiveUserId);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
           const data = docSnap.data() as UserProfile;
           setProfile(data);
-          setEditName(data.displayName);
+          setEditName(data.displayName || '');
           setEditBio(data.bio || '');
+        }
+
+        // Check if following
+        if (currentUser && !isOwnProfile) {
+          const followRef = doc(db, 'follows', `${currentUser.uid}_${effectiveUserId}`);
+          const followSnap = await getDoc(followRef);
+          setIsFollowing(followSnap.exists());
         }
 
         const q = query(
           collection(db, 'stacks'),
-          where('userId', '==', user.uid),
+          where('userId', '==', effectiveUserId),
           orderBy('createdAt', 'desc'),
           limit(10)
         );
@@ -40,21 +57,21 @@ export const ProfileView: React.FC = () => {
         const stacks = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Stack[];
         setUserStacks(stacks);
       } catch (error) {
-        handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
+        handleFirestoreError(error, OperationType.GET, `users/${effectiveUserId}`);
       } finally {
         setLoading(false);
       }
     };
 
     fetchProfile();
-  }, [user]);
+  }, [effectiveUserId]);
 
-  if (!user) return null;
+  if (!currentUser) return null;
 
   const handleSave = async () => {
-    if (!user || !editName.trim()) return;
+    if (!currentUser || !editName.trim()) return;
     try {
-      const docRef = doc(db, 'users', user.uid);
+      const docRef = doc(db, 'users', currentUser.uid);
       await updateDoc(docRef, {
         displayName: editName,
         bio: editBio,
@@ -62,16 +79,67 @@ export const ProfileView: React.FC = () => {
       setProfile(prev => prev ? { ...prev, displayName: editName, bio: editBio } : null);
       setIsEditing(false);
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`);
+      handleFirestoreError(error, OperationType.UPDATE, `users/${currentUser.uid}`);
     }
   };
 
+  const handleFollow = async () => {
+    if (!currentUser || !effectiveUserId || isOwnProfile) return;
+    
+    const followId = `${currentUser.uid}_${effectiveUserId}`;
+    const followRef = doc(db, 'follows', followId);
+    const targetUserRef = doc(db, 'users', effectiveUserId);
+    const currentUserRef = doc(db, 'users', currentUser.uid);
+
+    try {
+      if (isFollowing) {
+        // Unfollow
+        setIsFollowing(false);
+        setProfile(prev => prev ? { ...prev, followersCount: Math.max(0, (prev.followersCount || 0) - 1) } : null);
+        
+        await deleteDoc(followRef);
+        await updateDoc(targetUserRef, { followersCount: increment(-1) });
+        await updateDoc(currentUserRef, { followingCount: increment(-1) });
+      } else {
+        // Follow
+        setIsFollowing(true);
+        setProfile(prev => prev ? { ...prev, followersCount: (prev.followersCount || 0) + 1 } : null);
+
+        await setDoc(followRef, {
+          followerId: currentUser.uid,
+          followingId: effectiveUserId,
+          createdAt: serverTimestamp()
+        });
+        await updateDoc(targetUserRef, { followersCount: increment(1) });
+        await updateDoc(currentUserRef, { followingCount: increment(1) });
+      }
+    } catch (error) {
+      console.error('Follow error:', error);
+      // Revert local state on error
+      setIsFollowing(!isFollowing);
+      handleFirestoreError(error, OperationType.UPDATE, `follows/${followId}`);
+    }
+  };
+
+  if (loading && !profile) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center p-4">
+        <div className="w-8 h-8 border-2 border-brand-cyan border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-md mx-auto p-4 pb-32">
-      <div className="flex justify-end p-2">
-        <button className="w-10 h-10 bg-dark-surface rounded-full flex items-center justify-center border border-dark-border text-gray-400 hover:text-white transition-colors">
-          <Settings className="w-5 h-5" />
-        </button>
+      <div className="flex justify-between p-2">
+        {onBack ? (
+          <button 
+            onClick={onBack}
+            className="w-10 h-10 bg-dark-surface rounded-full flex items-center justify-center border border-dark-border text-gray-400 hover:text-white transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+        ) : <div />}
       </div>
 
       <motion.div
@@ -82,18 +150,15 @@ export const ProfileView: React.FC = () => {
         <div className="relative">
           <div className="w-28 h-28 rounded-full overflow-hidden border-2 border-brand-cyan p-1">
             <img 
-              src={user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} 
-              alt={user.displayName || 'Me'} 
+              src={profile?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${effectiveUserId}`} 
+              alt={profile?.displayName || 'User'} 
               className="w-full h-full object-cover rounded-full"
             />
-          </div>
-          <div className="absolute bottom-1 right-1 w-8 h-8 bg-brand-cyan text-black rounded-full flex items-center justify-center border-4 border-black">
-            <Zap className="w-4 h-4 fill-current" />
           </div>
         </div>
 
         <div className="text-center space-y-1 w-full flex flex-col items-center">
-          {isEditing ? (
+          {isEditing && isOwnProfile ? (
             <div className="space-y-4 w-full px-8">
               <input
                 type="text"
@@ -111,7 +176,7 @@ export const ProfileView: React.FC = () => {
             </div>
           ) : (
             <>
-              <h2 className="text-2xl font-bold">{profile?.displayName || user.displayName}</h2>
+              <h2 className="text-2xl font-bold">{profile?.displayName || 'Miner'}</h2>
               <p className="text-gray-500 text-sm max-w-[280px]">
                 {profile?.bio || 'Building a better future, one stack at a time.'}
               </p>
@@ -137,33 +202,55 @@ export const ProfileView: React.FC = () => {
         </div>
 
         <div className="flex gap-3 w-full">
-          {isEditing ? (
-            <>
-              <button 
-                onClick={() => setIsEditing(false)}
-                className="flex-1 bg-dark-surface border border-dark-border text-white font-bold py-3 rounded-2xl text-sm"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleSave}
-                disabled={!editName.trim()}
-                className="flex-1 bg-brand-cyan text-black font-bold py-3 rounded-2xl text-sm disabled:opacity-50"
-              >
-                Save Profile
-              </button>
-            </>
+          {isOwnProfile ? (
+            isEditing ? (
+              <>
+                <button 
+                  onClick={() => setIsEditing(false)}
+                  className="flex-1 bg-dark-surface border border-dark-border text-white font-bold py-3 rounded-2xl text-sm"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleSave}
+                  disabled={!editName.trim()}
+                  className="flex-1 bg-brand-cyan text-black font-bold py-3 rounded-2xl text-sm disabled:opacity-50"
+                >
+                  Save Profile
+                </button>
+              </>
+            ) : (
+              <>
+                <button 
+                  onClick={() => setIsEditing(true)}
+                  className="flex-1 bg-white text-black font-bold py-3 rounded-2xl flex items-center justify-center gap-2 text-sm"
+                >
+                  <Edit3 className="w-4 h-4" />
+                  Edit Profile
+                </button>
+                <button className="bg-dark-surface border border-dark-border px-5 py-3 rounded-2xl flex items-center justify-center text-gray-400">
+                  <Award className="w-5 h-5 text-brand-cyan" />
+                </button>
+              </>
+            )
           ) : (
             <>
               <button 
-                onClick={() => setIsEditing(true)}
-                className="flex-1 bg-white text-black font-bold py-3 rounded-2xl flex items-center justify-center gap-2 text-sm"
+                onClick={handleFollow}
+                className={`flex-1 font-bold py-4 rounded-2xl flex items-center justify-center gap-2 text-sm transition-all ${
+                  isFollowing 
+                    ? 'bg-dark-surface border border-brand-cyan/30 text-brand-cyan' 
+                    : 'bg-brand-cyan text-black hover:bg-brand-cyan/90'
+                }`}
               >
-                <Edit3 className="w-4 h-4" />
-                Edit Profile
+                {isFollowing ? 'Following' : <> <UserPlus className="w-4 h-4" /> Follow </>}
               </button>
-              <button className="bg-dark-surface border border-dark-border px-5 py-3 rounded-2xl flex items-center justify-center text-gray-400">
-                <Award className="w-5 h-5 text-brand-cyan" />
+              <button 
+                onClick={() => onStartDM?.(effectiveUserId, profile?.displayName || 'User')}
+                className="bg-dark-surface border border-dark-border px-6 py-4 rounded-2xl flex items-center justify-center text-gray-400 hover:text-white transition-colors"
+                title="Message"
+              >
+                <MessageCircle className="w-5 h-5" />
               </button>
             </>
           )}
@@ -172,7 +259,7 @@ export const ProfileView: React.FC = () => {
 
       <div className="mt-12 space-y-6">
         <div className="flex items-center justify-between px-2">
-          <h3 className="font-bold text-lg">My Stacks</h3>
+          <h3 className="font-bold text-lg">{isOwnProfile ? 'My Stacks' : 'Focus History'}</h3>
           <span className="text-xs text-gray-500 uppercase tracking-widest">History</span>
         </div>
 
@@ -193,15 +280,12 @@ export const ProfileView: React.FC = () => {
                   <p className="text-[10px] text-gray-500 font-mono">+{stack.durationMinutes} minutes • {stack.createdAt?.toDate().toLocaleDateString()}</p>
                 </div>
               </div>
-              <div className="text-xs text-brand-cyan opacity-0 group-hover:opacity-100 transition-opacity">
-                View
-              </div>
             </motion.div>
           ))}
           
           {!loading && userStacks.length === 0 && (
             <div className="text-center py-12 text-gray-600 text-sm">
-              Your focus history is empty.
+              {isOwnProfile ? 'Your focus history is empty.' : 'No history shared yet.'}
             </div>
           )}
         </div>

@@ -21,10 +21,14 @@ import { ProfileView } from './components/ProfileView';
 import { motion, AnimatePresence } from 'motion/react';
 import { Clock } from 'lucide-react';
 
+import { DirectMessageView } from './components/DirectMessageView';
+
 export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('timer');
+  const [viewUserId, setViewUserId] = useState<string | null>(null);
+  const [dmTarget, setDmTarget] = useState<{ id: string, name: string } | null>(null);
 
   // persistent timer state
   const [isActive, setIsActive] = useState(() => {
@@ -137,6 +141,26 @@ export default function App() {
   };
 
   const renderContent = () => {
+    if (dmTarget) {
+      return (
+        <DirectMessageView 
+          targetUserId={dmTarget.id} 
+          targetUserName={dmTarget.name}
+          onBack={() => setDmTarget(null)} 
+        />
+      );
+    }
+
+    if (viewUserId) {
+      return (
+        <ProfileView 
+          targetUserId={viewUserId} 
+          onBack={() => setViewUserId(null)} 
+          onStartDM={(id, name) => setDmTarget({ id, name })}
+        />
+      );
+    }
+
     switch (activeTab) {
       case 'timer': 
         return (
@@ -151,9 +175,9 @@ export default function App() {
             onReset={handleResetTimer}
           />
         );
-      case 'feed': return <FeedView />;
-      case 'community': return <CommunityView />;
-      case 'profile': return <ProfileView />;
+      case 'feed': return <FeedView onViewProfile={setViewUserId} />;
+      case 'community': return <CommunityView onViewProfile={setViewUserId} onStartDM={(id, name) => setDmTarget({ id, name })} />;
+      case 'profile': return <ProfileView onStartDM={(id, name) => setDmTarget({ id, name })} />;
       default: return null;
     }
   };
@@ -193,7 +217,7 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />
+      {!dmTarget && <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />}
     </div>
   );
 }

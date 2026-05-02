@@ -7,7 +7,11 @@ import { Stack, OperationType } from '../types';
 import { handleFirestoreError } from '../lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 
-export const FeedView: React.FC = () => {
+interface FeedViewProps {
+  onViewProfile?: (userId: string) => void;
+}
+
+export const FeedView: React.FC<FeedViewProps> = ({ onViewProfile }) => {
   const [stacks, setStacks] = useState<Stack[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -50,15 +54,6 @@ export const FeedView: React.FC = () => {
     <div className="max-w-md mx-auto p-4 pb-32 pt-2">
       <div className="flex items-center justify-between mb-6 px-2">
         <h1 className="text-2xl font-bold tracking-tight">Stack Feed</h1>
-        <div className="relative">
-          <div className="w-10 h-10 bg-dark-surface rounded-full flex items-center justify-center border border-dark-border text-gray-400">
-            <span className="relative flex h-3 w-3 -mr-5 -mt-5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-cyan opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-brand-cyan"></span>
-            </span>
-            <MoreHorizontal className="w-5 h-5" />
-          </div>
-        </div>
       </div>
 
       <div className="space-y-6">
@@ -74,7 +69,10 @@ export const FeedView: React.FC = () => {
             >
               <div className="p-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gray-800 overflow-hidden border border-white/10">
+                  <div 
+                    onClick={() => onViewProfile?.(stack.userId)}
+                    className="w-10 h-10 rounded-full bg-gray-800 overflow-hidden border border-white/10 cursor-pointer hover:border-brand-cyan/50 transition-colors"
+                  >
                     {stack.userPhotoURL ? (
                       <img src={stack.userPhotoURL} alt={stack.userName} className="w-full h-full object-cover" />
                     ) : (
@@ -83,8 +81,11 @@ export const FeedView: React.FC = () => {
                       </div>
                     )}
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-sm">{stack.userName}</h3>
+                  <div 
+                    onClick={() => onViewProfile?.(stack.userId)}
+                    className="cursor-pointer group"
+                  >
+                    <h3 className="font-semibold text-sm group-hover:text-brand-cyan transition-colors">{stack.userName}</h3>
                     <p className="text-[10px] text-gray-500 uppercase tracking-widest">
                       {stack.activity} • +{stack.durationMinutes}min
                     </p>

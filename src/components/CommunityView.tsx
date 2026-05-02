@@ -1,13 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Hash, Search, Plus, ThumbsUp, ChevronLeft, Send } from 'lucide-react';
+import { Hash, Search, Plus, ThumbsUp, ChevronLeft, Send, MessageCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, auth } from '../lib/firebase';
-import { collection, onSnapshot, query, orderBy, limit, addDoc, serverTimestamp } from 'firebase/firestore';
-import { Channel, Message, OperationType } from '../types';
+import { collection, onSnapshot, query, orderBy, limit, addDoc, serverTimestamp, where, doc, getDoc } from 'firebase/firestore';
+import { Channel, Message, OperationType, Conversation, UserProfile } from '../types';
 import { handleFirestoreError } from '../lib/utils';
 
-export const CommunityView: React.FC = () => {
+interface CommunityViewProps {
+  onViewProfile?: (userId: string) => void;
+  onStartDM?: (userId: string, userName: string) => void;
+}
+
+export const CommunityView: React.FC<CommunityViewProps> = ({ onViewProfile, onStartDM }) => {
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [conversationUsers, setConversationUsers] = useState<Record<string, UserProfile>>({});
   const [channels, setChannels] = useState<Channel[]>([
     { id: '1', name: 'GOOD MORNING', icon: '☀️', description: 'Start your day right' },
     { id: '2', name: 'TALKING', icon: '🗣️', description: 'General chat' },
@@ -17,8 +24,39 @@ export const CommunityView: React.FC = () => {
     { id: '6', name: 'FOOD SHARE', icon: '🍖', description: 'Fuel for study' },
   ]);
 
+  useEffect(() => {
+    if (!auth.currentUser) return;
+
+    const q = query(
+      collection(db, 'conversations'),
+      where('participants', 'array-contains', auth.currentUser.uid),
+      orderBy('updatedAt', 'desc'),
+      limit(10)
+    );
+
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      const convs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Conversation[];
+      setConversations(convs);
+
+      // Fetch profiles for participants we don't have yet
+      for (const conv of convs) {
+        const otherId = conv.participants.find(p => p !== auth.currentUser?.uid);
+        if (otherId && !conversationUsers[otherId]) {
+          const userDoc = await getDoc(doc(db, 'users', otherId));
+          if (userDoc.exists()) {
+            setConversationUsers(prev => ({ ...prev, [otherId]: userDoc.data() as UserProfile }));
+          }
+        }
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'conversations');
+    });
+
+    return () => unsubscribe();
+  }, [auth.currentUser]);
+
   if (selectedChannel) {
-    return <ChatRoom channel={selectedChannel} onBack={() => setSelectedChannel(null)} />;
+    return <ChatRoom channel={selectedChannel} onBack={() => setSelectedChannel(null)} onViewProfile={onViewProfile} />;
   }
 
   return (
@@ -40,6 +78,57 @@ export const CommunityView: React.FC = () => {
       </div>
 
       <div className="space-y-8">
+        <section className="space-y-3">
+          <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-2">
+            Direct Messages
+          </h3>
+          <div className="space-y-1">
+            {conversations.length === 0 ? (
+              <div className="p-8 text-center text-gray-500 bg-dark-surface/10 rounded-3xl border border-dashed border-white/5">
+                <MessageCircle className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                <p className="text-xs">No conversations yet</p>
+              </div>
+            ) : (
+              conversations.map((conv) => {
+                const otherId = conv.participants.find(p => p !== auth.currentUser?.uid);
+                const otherUser = otherId ? conversationUsers[otherId] : null;
+
+                if (!otherId) return null;
+
+                return (
+                  <motion.button
+                    key={conv.id}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => onStartDM?.(otherId, otherUser?.displayName || 'User')}
+                    className="w-full flex items-center justify-between p-4 rounded-3xl bg-dark-surface/30 hover:bg-dark-surface border border-transparent hover:border-white/10 transition-all group"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-full bg-gray-800 overflow-hidden border border-white/10 relative">
+                        {otherUser?.photoURL ? (
+                          <img src={otherUser.photoURL} alt={otherUser.displayName} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-xs font-bold text-brand-cyan">
+                            {otherUser?.displayName?.charAt(0) || 'U'}
+                          </div>
+                        )}
+                        <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-black" />
+                      </div>
+                      <div className="text-left">
+                        <h4 className="font-semibold text-sm group-hover:text-brand-cyan transition-colors">
+                          {otherUser?.displayName || 'User'}
+                        </h4>
+                        <p className="text-[10px] text-gray-500 truncate max-w-[180px]">
+                          {conv.lastMessage || 'Sent a focus signal'}
+                        </p>
+                      </div>
+                    </div>
+                  </motion.button>
+                );
+              })
+            )}
+          </div>
+        </section>
+
         <section className="space-y-3">
           <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-2">
             Rooms
@@ -87,9 +176,10 @@ export const CommunityView: React.FC = () => {
 interface ChatRoomProps {
   channel: Channel;
   onBack: () => void;
+  onViewProfile?: (userId: string) => void;
 }
 
-const ChatRoom: React.FC<ChatRoomProps> = ({ channel, onBack }) => {
+const ChatRoom: React.FC<ChatRoomProps> = ({ channel, onBack, onViewProfile }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -164,7 +254,10 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ channel, onBack }) => {
               animate={{ opacity: 1, x: 0 }}
               className={`flex items-end gap-2 ${isMe ? 'flex-row-reverse' : ''}`}
             >
-              <div className="w-8 h-8 rounded-full bg-gray-800 overflow-hidden shrink-0 border border-white/10">
+              <div 
+                onClick={() => onViewProfile?.(msg.userId)}
+                className="w-8 h-8 rounded-full bg-gray-800 overflow-hidden shrink-0 border border-white/10 cursor-pointer hover:border-brand-cyan transition-colors"
+              >
                 {msg.userPhotoURL ? (
                   <img src={msg.userPhotoURL} alt={msg.userName} className="w-full h-full object-cover" />
                 ) : (

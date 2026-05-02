@@ -65,3 +65,10 @@ export interface Message {
   content: string;
   createdAt: Timestamp;
 }
+
+export interface Conversation {
+  id: string;
+  participants: string[];
+  updatedAt: Timestamp;
+  lastMessage: string;
+}

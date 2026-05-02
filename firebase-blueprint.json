@@ -61,6 +61,28 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["channelId", "userId", "content", "createdAt"]
+    },
+    "Follow": {
+      "title": "Follow Relationship",
+      "description": "A follow relationship between two users.",
+      "type": "object",
+      "properties": {
+        "followerId": { "type": "string" },
+        "followingId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["followerId", "followingId", "createdAt"]
+    },
+    "Conversation": {
+      "title": "DM Conversation",
+      "description": "A conversation between two users.",
+      "type": "object",
+      "properties": {
+        "participants": { "type": "array", "items": { "type": "string" } },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "lastMessage": { "type": "string" }
+      },
+      "required": ["participants", "updatedAt"]
     }
   },
   "firestore": {
@@ -79,6 +101,18 @@
     "channels/{channelId}/messages/{messageId}": {
       "schema": "Message",
       "description": "Messages within a channel."
+    },
+    "follows/{followId}": {
+      "schema": "Follow",
+      "description": "Follow relationships between users."
+    },
+    "conversations/{conversationId}": {
+      "schema": "Conversation",
+      "description": "DM conversation metadata."
+    },
+    "conversations/{conversationId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Individual DM messages."
     }
   }
 }
